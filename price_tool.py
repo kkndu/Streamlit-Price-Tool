@@ -48,13 +48,12 @@ st.markdown(
 
 # 🔹 輔助函數：將大數字格式化為 K 或 M 縮寫
 def format_large_number(num):
-    """將大數字格式化為帶有 K/M 縮寫的字串，保留一位小數。"""
     if num >= 1_000_000:
-        return f"{num / 1_000_000:,.1f} M"
+        return f"{num / 1_000_000:,.3f} M"
     elif num >= 1_000:
-        return f"{num / 1_000:,.1f} K"
+        return f"{num / 1_000:,.3f} K"
     else:
-        return f"{num:,.2f}"
+        return f"{num:,.3f}"
 
 # 🔹 抓台灣銀行美元即期賣出匯率
 @st.cache_data(ttl=3600)
@@ -93,9 +92,9 @@ def calculate_price_table(cost, currency, rate, quantity):
         data.append({
             "利潤比例_float": r,
             "利潤比例": f"{int(r*100)}%",
-            "利潤率售價 (TWD)": round(selling_price, 2),
-            "單個利潤 (TWD)": round(selling_price - cost_twd, 2),
-            "總利潤 (TWD)": round((selling_price - cost_twd) * quantity, 2)
+            "利潤率售價 (TWD)": round(selling_price, 3),
+            "單個利潤 (TWD)": round(selling_price - cost_twd, 3),
+            "總利潤 (TWD)": round((selling_price - cost_twd) * quantity, 3)
         })
 
     return pd.DataFrame(data), cost_twd
@@ -109,7 +108,7 @@ st.markdown("---")
 col1, col2, col3, col4 = st.columns([1, 1, 1, 1]) 
 
 with col1:
-    cost = st.number_input('單個成本:', min_value=0.0, value=1.3, step=0.1, format="%.2f", key='cost_input')
+    cost = st.number_input('單個成本:', min_value=0.0,value=1.3,step=0.001,format="%.3f",key='cost_input')
 
 with col2:
     currency = st.selectbox('幣別:', options=['美金 USD', '台幣 TWD'], index=0, key='currency_input')
@@ -166,7 +165,7 @@ if cost > 0:
     # --- 關鍵績效指標 (KPI) 顯示區 ---
     
     with col_kpi_1:
-        st.metric(label="單位成本", value=f"{cost_twd:,.2f}") # 移除 NTD
+        st.metric(label="單位成本", value=f"{cost_twd:,.3f}") # 移除 NTD
     
     with col_kpi_2:
         st.metric(label=f"總採購 ({quantity}個)", value=f"{format_large_number(total_cost)}") # 移除 NTD
