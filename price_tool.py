@@ -83,7 +83,7 @@ def get_display_currency_rates(usd_twd_rate):
             eur_twd = usd_twd_rate / ecb["USD"]
             rates["EUR"] = eur_twd
             if "JPY" in ecb:
-                rates["JPY"] = eur_twd * ecb["JPY"]
+                 rates["JPY"] = eur_twd / ecb["JPY"]
     except Exception:
         pass
 
