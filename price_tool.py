@@ -99,14 +99,13 @@ def get_display_currency_rates():
 # ===================== 計算表 =====================
 def calculate_price_table(cost, currency, rate, quantity):
     cost_twd = cost if currency == "TWD" else cost * rate
-    rates = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5]
+    profit_rates = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5]
     data = []
 
-    for r in rates:
+    for r in profit_rates:
         selling_price = cost_twd / (1 - r)
         data.append({
-            "利潤比例_float": r,
-            "利潤比例": f"{int(r*100)}%",
+            "利潤比例": f"{int(r * 100)}%",
             "利潤率售價 (TWD)": round(selling_price, 3),
             "單個利潤 (TWD)": round(selling_price - cost_twd, 3),
             "總利潤 (TWD)": round((selling_price - cost_twd) * quantity, 3)
@@ -121,7 +120,13 @@ st.markdown("---")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    cost = st.number_input("單個成本", min_value=0.0, value=1.3, step=0.001, format="%.3f")
+    cost = st.number_input(
+        "單個成本",
+        min_value=0.0,
+        value=1.3,
+        step=0.001,
+        format="%.3f"
+    )
 
 with col2:
     currency = st.selectbox("幣別", ["USD", "TWD"])
@@ -156,54 +161,44 @@ if cost > 0:
 
     st.subheader("🎯 定價決策")
     profit_ratio = st.slider("目標利潤率 (%)", 0.0, 50.0, 20.0, 0.1)
-    profit_ratio_float = profit_ratio / 100
 
-    selling_price = cost_twd / (1 - profit_ratio_float)
-    unit_profit = selling_price - cost_twd
-    total_profit = unit_profit * quantity
+    selling_price = cost_twd / (1 - profit_ratio / 100)
+    total_profit = (selling_price - cost_twd) * quantity
 
     st.markdown("---")
 
     col_kpi_1, col_kpi_2, col_kpi_3 = st.columns(3)
-
     col_kpi_1.metric("單位成本 (TWD)", f"{cost_twd:,.3f}")
-    col_kpi_2.metric("建議售價 (TWD)", f"{selling_price:,.3f}", delta=f"{profit_ratio:.1f}%")
+    col_kpi_2.metric("建議售價 (TWD)", f"{selling_price:,.3f}")
     col_kpi_3.metric("總預期利潤 (TWD)", format_large_number(total_profit))
 
     st.markdown("---")
     st.header("📊 利潤級距比較表")
 
-display_currency = st.selectbox(
-    "售價顯示幣別",
-    ["TWD", "USD", "EUR", "JPY"]
-)
+    display_currency = st.selectbox(
+        "售價顯示幣別",
+        ["TWD", "USD", "EUR", "JPY"]
+    )
 
-DISPLAY_CURRENCY_RATES = get_display_currency_rates()
+    DISPLAY_CURRENCY_RATES = get_display_currency_rates()
 
-if display_currency not in DISPLAY_CURRENCY_RATES:
-    st.warning(f"⚠️ 無法取得 {display_currency} 匯率，目前僅顯示 TWD")
-    display_rate = 1.0
-else:
-    display_rate = DISPLAY_CURRENCY_RATES[display_currency]
-    st.caption(f"📌 匯率：1 {display_currency} = {display_rate:.4f} TWD")
+    if display_currency not in DISPLAY_CURRENCY_RATES:
+        st.warning(f"⚠️ 無法取得 {display_currency} 匯率，暫以 TWD 顯示")
+        display_rate = 1.0
+    else:
+        display_rate = DISPLAY_CURRENCY_RATES[display_currency]
+        st.caption(f"📌 匯率：1 {display_currency} = {display_rate:.4f} TWD")
 
-df_display = df_result.copy()
+    df_display = df_result.copy()
+    df_display[f"利潤率售價 ({display_currency})"] = (
+        df_display["利潤率售價 (TWD)"] / display_rate
+    ).round(3)
 
-df_display["利潤率售價"] = (
-    df_display["利潤率售價 (TWD)"] / display_rate
-).round(3)
+    df_display = df_display[
+        ["利潤比例", f"利潤率售價 ({display_currency})", "單個利潤 (TWD)", "總利潤 (TWD)"]
+    ]
 
-df_display = df_display[[
-    "利潤比例",
-    "利潤率售價",
-    "單個利潤 (TWD)",
-    "總利潤 (TWD)"
-]]
+    st.dataframe(df_display, use_container_width=True)
 
-df_display = df_display.rename(columns={
-    "利潤率售價": f"利潤率售價 ({display_currency})"
-})
-
-st.dataframe(df_display, use_container_width=True)
 else:
     st.warning("請輸入有效的成本金額")
