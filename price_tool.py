@@ -173,25 +173,37 @@ if cost > 0:
     st.markdown("---")
     st.header("📊 利潤級距比較表")
 
-    display_currency = st.selectbox("售價顯示幣別", ["TWD", "USD", "EUR", "JPY"])
-    DISPLAY_CURRENCY_RATES = get_display_currency_rates()
-    display_rate = DISPLAY_CURRENCY_RATES.get(display_currency, 1)
+display_currency = st.selectbox(
+    "售價顯示幣別",
+    ["TWD", "USD", "EUR", "JPY"]
+)
 
-    df_display = df_result.copy()
-    df_display["利潤率售價"] = (df_display["利潤率售價 (TWD)"] / display_rate).round(3)
+DISPLAY_CURRENCY_RATES = get_display_currency_rates()
 
-    df_display = df_display[[
-        "利潤比例",
-        "利潤率售價",
-        "單個利潤 (TWD)",
-        "總利潤 (TWD)"
-    ]]
+if display_currency not in DISPLAY_CURRENCY_RATES:
+    st.warning(f"⚠️ 無法取得 {display_currency} 匯率，目前僅顯示 TWD")
+    display_rate = 1.0
+else:
+    display_rate = DISPLAY_CURRENCY_RATES[display_currency]
+    st.caption(f"📌 匯率：1 {display_currency} = {display_rate:.4f} TWD")
 
-    df_display = df_display.rename(columns={
-        "利潤率售價": f"利潤率售價 ({display_currency})"
-    })
+df_display = df_result.copy()
 
-    st.dataframe(df_display, use_container_width=True)
+df_display["利潤率售價"] = (
+    df_display["利潤率售價 (TWD)"] / display_rate
+).round(3)
 
+df_display = df_display[[
+    "利潤比例",
+    "利潤率售價",
+    "單個利潤 (TWD)",
+    "總利潤 (TWD)"
+]]
+
+df_display = df_display.rename(columns={
+    "利潤率售價": f"利潤率售價 ({display_currency})"
+})
+
+st.dataframe(df_display, use_container_width=True)
 else:
     st.warning("請輸入有效的成本金額")
