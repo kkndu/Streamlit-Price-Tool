@@ -47,8 +47,7 @@ def get_tw_bank_usd_rate():
         res = requests.get(url, timeout=10)
         res.raise_for_status()
         soup = BeautifulSoup(res.text, "html.parser")
-        rows = soup.select("table.table tbody tr")
-        for row in rows:
+        for row in soup.select("table.table tbody tr"):
             if "美元" in row.text:
                 return float(row.select("td")[4].text.strip())
     except Exception:
@@ -64,54 +63,48 @@ def get_ecb_rates():
 
     tree = ET.fromstring(res.content)
     rates = {}
-
     for cube in tree.findall(".//{*}Cube[@currency]"):
         rates[cube.attrib["currency"]] = float(cube.attrib["rate"])
-
     return rates  # EUR base
-
-# ===================== Yahoo Finance 匯率 =====================
-@st.cache_data(ttl=3600)
-def get_yahoo_rate(pair):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{pair}=X"
-    res = requests.get(url, timeout=10)
-    res.raise_for_status()
-    data = res.json()
-    return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
 
 # ===================== 顯示用匯率（TWD base） =====================
 @st.cache_data(ttl=3600)
-def get_display_currency_rates():
+def get_display_currency_rates(usd_twd_rate):
     rates = {"TWD": 1.0}
 
+    # USD：一定用台銀
+    if usd_twd_rate:
+        rates["USD"] = usd_twd_rate
+
+    # EUR / JPY：ECB（有就加）
     try:
         ecb = get_ecb_rates()
-        eur_twd = get_yahoo_rate("EURTWD")
-
-        rates["EUR"] = eur_twd
-        rates["USD"] = eur_twd * ecb.get("USD", 0)
-        rates["JPY"] = eur_twd * ecb.get("JPY", 0)
+        if usd_twd_rate and "USD" in ecb:
+            eur_twd = usd_twd_rate / ecb["USD"]
+            rates["EUR"] = eur_twd
+            if "JPY" in ecb:
+                rates["JPY"] = eur_twd * ecb["JPY"]
     except Exception:
         pass
 
     return rates
 
 # ===================== 計算表 =====================
-def calculate_price_table(cost, currency, rate, quantity):
-    cost_twd = cost if currency == "TWD" else cost * rate
+def calculate_price_table(cost, currency, usd_rate, quantity):
+    cost_twd = cost if currency == "TWD" else cost * usd_rate
     profit_rates = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5]
-    data = []
+    rows = []
 
     for r in profit_rates:
         selling_price = cost_twd / (1 - r)
-        data.append({
+        rows.append({
             "利潤比例": f"{int(r * 100)}%",
             "利潤率售價 (TWD)": round(selling_price, 3),
             "單個利潤 (TWD)": round(selling_price - cost_twd, 3),
             "總利潤 (TWD)": round((selling_price - cost_twd) * quantity, 3)
         })
 
-    return pd.DataFrame(data), cost_twd
+    return pd.DataFrame(rows), cost_twd
 
 # ===================== UI =====================
 st.title("🛒 採購決策與定價評估")
@@ -120,13 +113,7 @@ st.markdown("---")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    cost = st.number_input(
-        "單個成本",
-        min_value=0.0,
-        value=1.3,
-        step=0.001,
-        format="%.3f"
-    )
+    cost = st.number_input("單個成本", min_value=0.0, value=1.3, step=0.001, format="%.3f")
 
 with col2:
     currency = st.selectbox("幣別", ["USD", "TWD"])
@@ -135,7 +122,7 @@ with col3:
     if "usd_rate" not in st.session_state:
         st.session_state.usd_rate = get_tw_bank_usd_rate() or 32.0
 
-    rate = st.number_input(
+    usd_rate = st.number_input(
         "USD → TWD",
         value=st.session_state.usd_rate,
         step=0.0001,
@@ -157,37 +144,32 @@ if st.button("更新台銀匯率", use_container_width=True):
 
 # ===================== 計算 =====================
 if cost > 0:
-    df_result, cost_twd = calculate_price_table(cost, currency, rate, quantity)
+    df_result, cost_twd = calculate_price_table(cost, currency, usd_rate, quantity)
 
     st.subheader("🎯 定價決策")
     profit_ratio = st.slider("目標利潤率 (%)", 0.0, 50.0, 20.0, 0.1)
-
     selling_price = cost_twd / (1 - profit_ratio / 100)
     total_profit = (selling_price - cost_twd) * quantity
 
     st.markdown("---")
 
-    col_kpi_1, col_kpi_2, col_kpi_3 = st.columns(3)
-    col_kpi_1.metric("單位成本 (TWD)", f"{cost_twd:,.3f}")
-    col_kpi_2.metric("建議售價 (TWD)", f"{selling_price:,.3f}")
-    col_kpi_3.metric("總預期利潤 (TWD)", format_large_number(total_profit))
+    c1, c2, c3 = st.columns(3)
+    c1.metric("單位成本 (TWD)", f"{cost_twd:,.3f}")
+    c2.metric("建議售價 (TWD)", f"{selling_price:,.3f}")
+    c3.metric("總預期利潤", format_large_number(total_profit))
 
     st.markdown("---")
     st.header("📊 利潤級距比較表")
 
-    display_currency = st.selectbox(
-        "售價顯示幣別",
-        ["TWD", "USD", "EUR", "JPY"]
-    )
+    display_currency = st.selectbox("售價顯示幣別", ["TWD", "USD", "EUR", "JPY"])
+    rates = get_display_currency_rates(usd_rate)
 
-    DISPLAY_CURRENCY_RATES = get_display_currency_rates()
-
-    if display_currency not in DISPLAY_CURRENCY_RATES:
+    if display_currency not in rates:
         st.warning(f"⚠️ 無法取得 {display_currency} 匯率，暫以 TWD 顯示")
-        display_rate = 1.0
-    else:
-        display_rate = DISPLAY_CURRENCY_RATES[display_currency]
-        st.caption(f"📌 匯率：1 {display_currency} = {display_rate:.4f} TWD")
+        display_currency = "TWD"
+
+    display_rate = rates[display_currency]
+    st.caption(f"📌 匯率：1 {display_currency} = {display_rate:.4f} TWD")
 
     df_display = df_result.copy()
     df_display[f"利潤率售價 ({display_currency})"] = (
