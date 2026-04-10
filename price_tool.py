@@ -53,7 +53,17 @@ def get_tw_bank_usd_rate():
     except Exception:
         pass
     return None
-
+# ===================== 人民幣匯率（Yahoo） =====================
+@st.cache_data(ttl=3600)
+def get_cny_twd_rate():
+    try:
+        url = "https://query1.finance.yahoo.com/v8/finance/chart/CNYTWD=X"
+        res = requests.get(url, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        return data["chart"]["result"][0]["meta"]["regularMarketPrice"]
+    except Exception:
+        return None
 # ===================== ECB 匯率 =====================
 @st.cache_data(ttl=3600)
 def get_ecb_rates():
@@ -91,7 +101,25 @@ def get_display_currency_rates(usd_twd_rate):
 
 # ===================== 計算表 =====================
 def calculate_price_table(cost, currency, usd_rate, quantity):
-    cost_twd = cost if currency == "TWD" else cost * usd_rate
+    # --- 成本轉 TWD ---
+    if currency == "TWD":
+        cost_twd = cost
+
+    elif currency == "USD":
+        cost_twd = cost * usd_rate
+
+    elif currency == "CNY":
+        cny_rate = get_cny_twd_rate()
+        if cny_rate:
+            cost_twd = cost * cny_rate
+        else:
+            st.warning("⚠️ 無法取得人民幣匯率，暫以 4.3 計算")
+            cost_twd = cost * 4.3  # fallback
+
+    else:
+        cost_twd = cost
+
+    # --- 利潤計算 ---
     profit_rates = [0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5]
     rows = []
 
@@ -116,7 +144,7 @@ with col1:
     cost = st.number_input("單個成本", min_value=0.0, value=1.3, step=0.001, format="%.3f")
 
 with col2:
-    currency = st.selectbox("幣別", ["USD", "TWD"])
+   currency = st.selectbox("幣別", ["USD", "TWD", "CNY"])
 
 with col3:
     if "usd_rate" not in st.session_state:
